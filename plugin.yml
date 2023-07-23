@@ -1,0 +1,5 @@
+name: PM-AutoUpdater
+version: 2.0.0
+author: ShadowMikado
+api: [5.0.0]
+main: ShadowMikado\PocketMineAutoUpdater\Main
