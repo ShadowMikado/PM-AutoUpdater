@@ -5,15 +5,13 @@ namespace ShadowMikado\PocketMineAutoUpdater\Updater;
 use Logger;
 use LogLevel;
 use pocketmine\Server;
-use pocketmine\utils\Internet;
 use PrefixedLogger;
 
 class UpdateCheckerMixin
 {
 	protected Server $server;
-	protected string $updateUrl = "";
 	private Logger $logger;
-	public string $error = "Unknown error";
+	protected ?UpdateInfoMixin $updateInfo = null;
 
 	public function __construct(Server $server)
 	{
@@ -23,7 +21,7 @@ class UpdateCheckerMixin
 
 	public function checkUpdateError(string $error): void
 	{
-		$this->logger->debug("Async update check failed due to \"$error\"");
+		$this->logger->critical("Async update check failed due to \"$error\"");
 	}
 
 	public function printConsoleMessage(string $lines, string $logLevel = LogLevel::INFO): void
@@ -31,70 +29,56 @@ class UpdateCheckerMixin
 		$this->logger->log($logLevel, $lines);
 	}
 
-	public function checkUpdate(): void
+	public function hasUpdate(): bool
 	{
-		$response = $this->getResponse();
-		$this->updateUrl = $response["download_url"];
+		if ($this->updateInfo !== null) {
+			return $this->server->getPocketMineVersion() !== $this->updateInfo->base_version;
+		} else {
+			return false;
+		}
 	}
-
 
 	public function downloadUpdate(): void
 	{
-		if ($this->isUpdatable()) {
-			$pluginData = $this->server->getPluginManager()->getPlugin("PM-AutoUpdater")->getDataFolder();
-			$this->logger->critical("Downloading PocketMine update, don't stop the server !");
-			file_put_contents($pluginData . "update/PocketMine-MP.phar", fopen($this->updateUrl, "r"));
-			if (file_exists("PocketMine-MP.phar")) {
-				copy("PocketMine-MP.phar", $pluginData . "old/PocketMine-MP.phar");
-				$this->logger->warning("Old PocketMine-MP.phar copied in " . $pluginData . "old");
-			} else {
-				$this->logger->notice("You've probably deleted old PocketMine-MP.phar, can't make a backup!");
-			}
-			$this->logger->warning("Successfully downloaded update in " . $pluginData . "update");
-		}
-	}
-
-	public function getResponse()
-	{
-		$error = "";
-		$response = Internet::getURL("https://update.pmmp.io/api", 4, [], $error);
-		$this->error = $error;
-
-		if ($response != null) {
-			$response = json_decode($response->getBody(), true);
-			if (is_array($response)) {
-				if (isset($response["error"]) && is_string($response["error"])) {
-					$this->error = $response["error"];
-				} else {
-					return $response;
-				}
-			} else {
-				$this->error = "Invalid response data (format)";
-			}
+		$pluginData = $this->server->getPluginManager()->getPlugin("PM-AutoUpdater")->getDataFolder();
+		$this->logger->critical("Downloading PocketMine update, don't stop the server !");
+		file_put_contents($pluginData . "update/PocketMine-MP.phar", fopen($this->updateInfo->download_url, "r"));
+		if (file_exists("PocketMine-MP.phar")) {
+			copy("PocketMine-MP.phar", $pluginData . "old/PocketMine-MP.phar");
+			$this->logger->warning("Old PocketMine-MP.phar copied in " . $pluginData . "old");
 		} else {
-			$this->error = "Invalid response data (null)";
+			$this->logger->notice("You've probably deleted old PocketMine-MP.phar, can't make a backup!");
 		}
+		$this->logger->warning("Successfully downloaded update in " . $pluginData . "update");
 	}
 
-	public function isUpdatable(): bool
+	public function getUpdateInfo(): ?UpdateInfoMixin
 	{
-		return $this->server->getPocketMineVersion() !== $this->getResponse()["base_version"];
-	}
-
-	public function isConnected(): bool
-	{
-		$connected = @fsockopen("google.com", 443);
-		if ($connected) {
-			$is_conn = true;
-			fclose($connected);
-		} else {
-			$is_conn = false;
-		}
-		return $is_conn;
+		return $this->updateInfo;
 	}
 
 	public function doCheck(): void
 	{
 		$this->server->getAsyncPool()->submitTask(new UpdateTask($this));
+	}
+
+	protected function checkUpdate(UpdateInfoMixin $updateInfo): void
+	{
+
+		if ($this->server->getPocketMineVersion() !== $updateInfo->base_version) {
+			$this->updateInfo = $updateInfo;
+		} else {
+			$this->updateInfo = null;
+		}
+	}
+
+	public function checkUpdateCallback(UpdateInfoMixin $updateInfo): void
+	{
+		$this->checkUpdate($updateInfo);
+		if ($this->hasUpdate()) {
+			$this->downloadUpdate();
+		} else {
+			$this->logger->debug("No update !");
+		}
 	}
 }
