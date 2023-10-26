@@ -40,9 +40,15 @@ class UpdateCheckerMixin
 
 	public function downloadUpdate(): void
 	{
-		$pluginData = $this->server->getPluginManager()->getPlugin("PM-AutoUpdater")->getDataFolder();
+        $arrContextOptions=array(
+            "ssl"=>array(
+                "verify_peer"=>false,
+                "verify_peer_name"=>false,
+            ),
+        );
+        $pluginData = $this->server->getPluginManager()->getPlugin("PM-AutoUpdater")->getDataFolder();
 		$this->logger->critical("Downloading PocketMine update, don't stop the server !");
-		file_put_contents($pluginData . "update/PocketMine-MP.phar", fopen($this->updateInfo->download_url, "r"));
+		file_put_contents($pluginData . "update/PocketMine-MP.phar", file_get_contents($this->updateInfo->download_url, false, stream_context_create($arrContextOptions)));
 		if (file_exists("PocketMine-MP.phar")) {
 			copy("PocketMine-MP.phar", $pluginData . "old/PocketMine-MP.phar");
 			$this->logger->warning("Old PocketMine-MP.phar copied in " . $pluginData . "old");
